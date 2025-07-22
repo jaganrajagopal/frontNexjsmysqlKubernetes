@@ -18,8 +18,8 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # Local development files
-.env*.local
-.env
+# .env*.local
+# .env
 
 # IDE/Editor files
 .vscode/
