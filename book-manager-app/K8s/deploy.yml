@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nextjs-frontend
+  labels:
+    app: nextjs
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nextjs
+  template:
+    metadata:
+      labels:
+        app: nextjs
+    spec:
+      initContainers:
+        - name: prisma-migrate
+          image: 11122233345/my-nextjs-app:latest
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              echo "Running Prisma generate and migrate...";
+              npx prisma generate && npx prisma migrate deploy;
+          env:
+            - name: DATABASE_URL
+              value: mysql://root:$(MYSQL_ROOT_PASSWORD)@my-mysql.default.svc.cluster.local:3306/books
+          envFrom:
+            - secretRef:
+                name: my-mysql
+      containers:
+        - name: nextjs
+          image: 11122233345/my-nextjs-app:latest
+          ports:
+            - containerPort: 3000
+          env:
+            - name: DB_HOST
+              value: my-mysql.default.svc.cluster.local
+            - name: DB_PORT
+              value: "3306"
+            - name: DB_NAME
+              value: books
+            - name: DB_USER
+              value: root
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: my-mysql
+                  key: mysql-root-password
