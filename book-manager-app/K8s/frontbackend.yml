@@ -57,11 +57,13 @@ spec:
           ports:
             - containerPort: 3000
           env:
-            - name: DATABASE_URL
+            - name: MYSQL_ROOT_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: my-mysql
-                  key: database-url
+                  key: mysql-root-password
+            - name: DATABASE_URL
+              value: "mysql://root:$(MYSQL_ROOT_PASSWORD)@my-mysql.default.svc.cluster.local:3306/books"
             - name: DB_HOST
               value: my-mysql.default.svc.cluster.local
             - name: DB_PORT
