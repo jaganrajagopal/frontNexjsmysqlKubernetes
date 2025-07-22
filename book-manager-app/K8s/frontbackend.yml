@@ -1,0 +1,184 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nextjs-frontend
+  labels:
+    app: nextjs
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nextjs
+  template:
+    metadata:
+      labels:
+        app: nextjs
+    spec:
+      initContainers:
+        - name: wait-for-mysql
+          image: busybox:1.35
+          command: ['sh', '-c']
+          args:
+            - |
+              echo "Waiting for MySQL to be ready...";
+              until nc -z my-mysql.default.svc.cluster.local 3306; do
+                echo "MySQL not ready, waiting...";
+                sleep 5;
+              done;
+              echo "MySQL is ready!";
+        - name: prisma-migrate
+          image: 11122233345/my-nextjs-app:latest
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              echo "Running Prisma generate and migrate...";
+              npx prisma generate && npx prisma migrate deploy;
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: my-mysql
+                  key: database-url
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: my-mysql
+                  key: mysql-root-password
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+      containers:
+        - name: nextjs
+          image: 11122233345/my-nextjs-app:latest
+          ports:
+            - containerPort: 3000
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: my-mysql
+                  key: database-url
+            - name: DB_HOST
+              value: my-mysql.default.svc.cluster.local
+            - name: DB_PORT
+              value: "3306"
+            - name: DB_NAME
+              value: books
+            - name: DB_USER
+              value: root
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: my-mysql
+                  key: mysql-root-password
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-db
+  labels:
+    app: mysql-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql-db
+  template:
+    metadata:
+      labels:
+        app: mysql-db
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:8.0
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: book-manager-secret
+              key: mysql-root-password
+        - name: MYSQL_DATABASE
+          valueFrom:
+            secretKeyRef:
+              name: book-manager-secret
+              key: db-name
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: book-manager-secret
+              key: db-user
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: book-manager-secret
+              key: db-password
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        readinessProbe:
+          exec:
+            command:
+            - "/bin/bash"
+            - "-c"
+            - "mysql -u$MYSQL_USER -p$MYSQL_PASSWORD -e 'SELECT 1'"
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        livenessProbe:
+          exec:
+            command:
+            - "/bin/bash"
+            - "-c"
+            - "mysql -u$MYSQL_USER -p$MYSQL_PASSWORD -e 'SELECT 1'"
+          initialDelaySeconds: 60
+          periodSeconds: 10
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
