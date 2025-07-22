@@ -21,7 +21,7 @@ spec:
           args:
             - |
               echo "Waiting for MySQL to be ready...";
-              until nc -z my-mysql.default.svc.cluster.local 3306; do
+              until nc -z my-mysql-service.default.svc.cluster.local 3306; do
                 echo "MySQL not ready, waiting...";
                 sleep 5;
               done;
@@ -39,11 +39,6 @@ spec:
                 secretKeyRef:
                   name: my-mysql
                   key: database-url
-            - name: MYSQL_ROOT_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: my-mysql
-                  key: mysql-root-password
           resources:
             requests:
               memory: "256Mi"
@@ -57,15 +52,13 @@ spec:
           ports:
             - containerPort: 3000
           env:
-            - name: MYSQL_ROOT_PASSWORD
+            - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
                   name: my-mysql
-                  key: mysql-root-password
-            - name: DATABASE_URL
-              value: "mysql://root:$(MYSQL_ROOT_PASSWORD)@my-mysql.default.svc.cluster.local:3306/books"
+                  key: database-url
             - name: DB_HOST
-              value: my-mysql.default.svc.cluster.local
+              value: my-mysql-service.default.svc.cluster.local
             - name: DB_PORT
               value: "3306"
             - name: DB_NAME
@@ -79,7 +72,7 @@ spec:
                   key: mysql-root-password
           readinessProbe:
             httpGet:
-              path: /api/health
+              path: /
               port: 3000
             initialDelaySeconds: 30
             periodSeconds: 10
@@ -87,7 +80,7 @@ spec:
             failureThreshold: 3
           livenessProbe:
             httpGet:
-              path: /api/health
+              path: /
               port: 3000
             initialDelaySeconds: 60
             periodSeconds: 15
@@ -101,21 +94,22 @@ spec:
               memory: "1Gi"
               cpu: "500m"
 ---
+# Single MySQL deployment - removed the conflicting mysql-db deployment
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: mysql-db
+  name: my-mysql
   labels:
-    app: mysql-db
+    app: my-mysql
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: mysql-db
+      app: my-mysql
   template:
     metadata:
       labels:
-        app: mysql-db
+        app: my-mysql
     spec:
       containers:
       - name: mysql
@@ -126,22 +120,22 @@ spec:
         - name: MYSQL_ROOT_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: book-manager-secret
+              name: my-mysql
               key: mysql-root-password
         - name: MYSQL_DATABASE
           valueFrom:
             secretKeyRef:
-              name: book-manager-secret
+              name: my-mysql
               key: db-name
         - name: MYSQL_USER
           valueFrom:
             secretKeyRef:
-              name: book-manager-secret
+              name: my-mysql
               key: db-user
         - name: MYSQL_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: book-manager-secret
+              name: my-mysql
               key: db-password
         volumeMounts:
         - name: mysql-storage
@@ -158,17 +152,19 @@ spec:
             command:
             - "/bin/bash"
             - "-c"
-            - "mysql -u$MYSQL_USER -p$MYSQL_PASSWORD -e 'SELECT 1'"
+            - "mysqladmin ping -h localhost -u root -p$MYSQL_ROOT_PASSWORD"
           initialDelaySeconds: 30
           periodSeconds: 10
+          timeoutSeconds: 5
         livenessProbe:
           exec:
             command:
-            - "/bin/bash"
+            - "/bin/bash"  
             - "-c"
-            - "mysql -u$MYSQL_USER -p$MYSQL_PASSWORD -e 'SELECT 1'"
+            - "mysqladmin ping -h localhost -u root -p$MYSQL_ROOT_PASSWORD"
           initialDelaySeconds: 60
           periodSeconds: 10
+          timeoutSeconds: 5
       volumes:
       - name: mysql-storage
         persistentVolumeClaim:
