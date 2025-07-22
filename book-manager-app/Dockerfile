@@ -9,10 +9,10 @@ RUN npm install
 
 COPY . .
 # 5. Generate Prisma client
-RUN npx prisma generate
+#RUN npx prisma generate
 
 # 6. Run migration for production
-RUN npx prisma migrate deploy
+#RUN npx prisma migrate deploy
 
 RUN npm run build
 
