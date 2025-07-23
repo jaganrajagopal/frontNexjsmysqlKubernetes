@@ -27,7 +27,7 @@ spec:
               done;
               echo "MySQL is ready!";
         - name: prisma-migrate
-          image: 11122233345/my-nextjs-app:latest
+          image: 11122233345/my-nextjs-app:latest 
           command: ["/bin/sh", "-c"]
           args:
             - |
@@ -62,14 +62,20 @@ spec:
             - name: DB_PORT
               value: "3306"
             - name: DB_NAME
-              value: books
+              valueFrom:
+                secretKeyRef:
+                  name: my-mysql
+                  key: db-name
             - name: DB_USER
-              value: root
+              valueFrom:
+                secretKeyRef:
+                  name: my-mysql
+                  key: db-user
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: my-mysql
-                  key: mysql-root-password
+                  key: db-password
           readinessProbe:
             httpGet:
               path: /
@@ -94,7 +100,6 @@ spec:
               memory: "1Gi"
               cpu: "500m"
 ---
-# Single MySQL deployment - removed the conflicting mysql-db deployment
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -150,21 +155,23 @@ spec:
         readinessProbe:
           exec:
             command:
-            - "/bin/bash"
-            - "-c"
+            - sh
+            - -c
             - "mysqladmin ping -h localhost -u root -p$MYSQL_ROOT_PASSWORD"
           initialDelaySeconds: 30
           periodSeconds: 10
           timeoutSeconds: 5
+          failureThreshold: 3
         livenessProbe:
           exec:
             command:
-            - "/bin/bash"  
-            - "-c"
+            - sh
+            - -c
             - "mysqladmin ping -h localhost -u root -p$MYSQL_ROOT_PASSWORD"
           initialDelaySeconds: 60
-          periodSeconds: 10
+          periodSeconds: 20
           timeoutSeconds: 5
+          failureThreshold: 3
       volumes:
       - name: mysql-storage
         persistentVolumeClaim:
