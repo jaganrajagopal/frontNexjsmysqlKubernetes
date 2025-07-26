@@ -1,0 +1,142 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-init-script
+  labels:
+    app: my-mysql
+    component: database-init
+data:
+  01-init.sql: |
+    -- Create the books database if it doesn't exist
+    CREATE DATABASE IF NOT EXISTS books;
+    USE books;
+    
+    -- Create the books table matching your existing schema
+    CREATE TABLE IF NOT EXISTS books (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      title VARCHAR(255) NOT NULL,
+      author VARCHAR(255) NOT NULL,
+      createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_title (title),
+      INDEX idx_author (author),
+      INDEX idx_created (createdAt)
+    );
+    
+    -- Create the bookmanager user and grant privileges
+    CREATE USER IF NOT EXISTS 'bookmanager'@'%' IDENTIFIED BY 'userpassword123';
+    GRANT ALL PRIVILEGES ON books.* TO 'bookmanager'@'%';
+    FLUSH PRIVILEGES;
+    
+    -- Insert your existing books and additional sample data
+    INSERT IGNORE INTO books (id, title, author, createdAt) VALUES
+    (1, 'think and grow rich', 'Napoleon', '2025-07-15 05:39:05.420'),
+    (2, 'Atomic Habit', 'Brain Tracy', '2025-07-15 05:39:23.961');
+    
+    -- Insert additional popular books to expand your collection
+    INSERT INTO books (title, author, createdAt) VALUES
+    ('The 7 Habits of Highly Effective People', 'Stephen R. Covey', NOW()),
+    ('Rich Dad Poor Dad', 'Robert Kiyosaki', NOW()),
+    ('The Power of Positive Thinking', 'Norman Vincent Peale', NOW()),
+    ('How to Win Friends and Influence People', 'Dale Carnegie', NOW()),
+    ('The Lean Startup', 'Eric Ries', NOW()),
+    ('Good to Great', 'Jim Collins', NOW()),
+    ('The 4-Hour Workweek', 'Timothy Ferriss', NOW()),
+    ('Mindset: The New Psychology of Success', 'Carol S. Dweck', NOW()),
+    ('The Compound Effect', 'Darren Hardy', NOW()),
+    ('Start With Why', 'Simon Sinek', NOW()),
+    ('The Miracle Morning', 'Hal Elrod', NOW()),
+    ('Deep Work', 'Cal Newport', NOW()),
+    ('The One Thing', 'Gary Keller', NOW()),
+    ('Grit', 'Angela Duckworth', NOW()),
+    ('The Subtle Art of Not Giving a F*ck', 'Mark Manson', NOW()),
+    ('Sapiens: A Brief History of Humankind', 'Yuval Noah Harari', NOW()),
+    ('Educated', 'Tara Westover', NOW()),
+    ('Becoming', 'Michelle Obama', NOW()),
+    ('The Alchemist', 'Paulo Coelho', NOW()),
+    ('Man''s Search for Meaning', 'Viktor E. Frankl', NOW()),
+    ('The Great Gatsby', 'F. Scott Fitzgerald', NOW()),
+    ('To Kill a Mockingbird', 'Harper Lee', NOW()),
+    ('1984', 'George Orwell', NOW()),
+    ('Pride and Prejudice', 'Jane Austen', NOW()),
+    ('The Catcher in the Rye', 'J.D. Salinger', NOW()),
+    ('Lord of the Flies', 'William Golding', NOW()),
+    ('The Kite Runner', 'Khaled Hosseini', NOW()),
+    ('Life of Pi', 'Yann Martel', NOW()),
+    ('The Book Thief', 'Markus Zusak', NOW()),
+    ('The Fault in Our Stars', 'John Green', NOW());
+    
+    -- Create an index to improve query performance
+    CREATE INDEX idx_title_author ON books(title, author);
+    
+    -- Show table structure for verification
+    DESCRIBE books;
+    
+    -- Display count of books inserted
+    SELECT COUNT(*) as total_books FROM books;
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  labels:
+    app: nextjs
+    component: application-config
+data:
+  # Database configuration
+  DB_HOST: "my-mysql-service.default.svc.cluster.local"
+  DB_PORT: "3306"
+  DB_NAME: "books"
+  DB_USER: "bookmanager"
+  
+  # Application settings
+  NODE_ENV: "production"
+  PORT: "3000"
+  
+  # Books API configuration
+  MAX_BOOKS_PER_PAGE: "20"
+  DEFAULT_SORT_BY: "createdAt"
+  DEFAULT_SORT_ORDER: "DESC"
+  
+  # Search configuration
+  ENABLE_SEARCH: "true"
+  SEARCH_MIN_CHARACTERS: "2"
+  
+  # Cache settings
+  CACHE_TTL_SECONDS: "300"
+  
+  # API settings
+  API_VERSION: "v1"
+  API_TIMEOUT_MS: "30000"
+  
+  # Logging
+  LOG_LEVEL: "info"
+  LOG_FORMAT: "json"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-health-check
+  labels:
+    app: my-mysql
+    component: health-check
+data:
+  health-check.sql: |
+    -- Health check queries for the books database
+    SELECT 'Database Connection' as check_type, 'OK' as status;
+    SELECT 'Books Table' as check_type, 
+           CASE WHEN COUNT(*) > 0 THEN 'OK' ELSE 'EMPTY' END as status 
+    FROM books;
+    SELECT 'Recent Books' as check_type, COUNT(*) as count 
+    FROM books 
+    WHERE createdAt >= DATE_SUB(NOW(), INTERVAL 7 DAY);
+    
+  backup.sql: |
+    -- Backup script for books table
+    SELECT CONCAT(
+      'INSERT INTO books (id, title, author, createdAt) VALUES (',
+      id, ', ''', REPLACE(title, '''', ''''''), ''', ''',
+      REPLACE(author, '''', ''''''), ''', ''',
+      createdAt, ''');'
+    ) as backup_statement
+    FROM books
+    ORDER BY id;
